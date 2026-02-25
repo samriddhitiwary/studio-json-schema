@@ -129,7 +129,6 @@ const MonacoEditor = () => {
     if (editorVisible) {
       editorPanelRef.current.collapse();
     } else {
-      editorPanelRef.current.expand();
       editorPanelRef.current.resize(25);
     }
 
