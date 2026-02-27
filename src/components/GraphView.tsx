@@ -331,10 +331,11 @@ const GraphView = ({
 
     return () => clearTimeout(timeout);
   }, [searchString]);
-    useEffect(() => {
-    if (matchCount <= 1) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (matchCount <= 1) return;
+
       if (e.key === "ArrowRight" || e.key === "Enter") {
         e.preventDefault();
         navigateMatch("next");
@@ -342,14 +343,12 @@ const GraphView = ({
         e.preventDefault();
         navigateMatch("prev");
       }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [matchCount, navigateMatch]);
+    },
+    [matchCount, navigateMatch]
+  );
 
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div ref={containerRef} tabIndex={0} onKeyDown={handleKeyDown} className="relative w-full h-full">
       <ReactFlow
         nodes={nodes}
         edges={animatedEdges}
