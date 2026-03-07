@@ -334,7 +334,7 @@ const GraphView = ({
     return () => clearTimeout(timeout);
   }, [searchString]);
 
-    const handleKeyDown = useCallback(
+  const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (matchCount <= 1) return;
 
@@ -350,7 +350,12 @@ const GraphView = ({
   );
 
   return (
-    <div ref={containerRef} tabIndex={0} onKeyDown={handleKeyDown} className="relative w-full h-full">
+    <div
+      ref={containerRef}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="relative w-full h-full"
+    >
       <ReactFlow
         nodes={nodes}
         edges={animatedEdges}
