@@ -1,59 +1,70 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://studio.ioflux.org/schema",
-  "description": "A JSON Schema describing a person",
+  "$id": "https://example.com/dependent-schemas-test",
+  "title": "Test Schema for dependentSchemas",
+  "description": "A schema demonstrating the dependentSchemas keyword handler",
   "type": "object",
   "properties": {
     "name": {
+      "type": "string"
+    },
+    "credit_card": {
       "type": "string",
-      "minLength": 2,
-      "maxLength": 50
+      "pattern": "^[0-9]{16}$"
     },
-    "age": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 150
+    "billing_address": {
+      "type": "string"
     },
-    "address": {
-      "$ref": "#/$defs/address"
+    "cvv": {
+      "type": "string",
+      "pattern": "^[0-9]{3}$"
     },
-    "hobbies": {
-      "type": "array",
-      "minItems": 0,
-      "maxItems": 5
+    "employmentStatus": {
+      "type": "string",
+      "enum": ["employed", "self-employed", "unemployed"]
     },
-    "maritalStatus": {
-      "oneOf": [
-        {
-          "const": "single"
-        },
-        {
-          "const": "married"
-        }
-      ]
+    "employer": {
+      "type": "string"
     },
-    "isEmployed": {
-      "type": "boolean"
+    "jobTitle": {
+      "type": "string"
     }
   },
-  "additionalProperties": true,
-  "$defs": {
-    "address": {
-      "type": "object",
+  "dependentSchemas": {
+    "credit_card": {
       "properties": {
-        "city": {
-          "type": "string"
+        "billing_address": {
+          "type": "string",
+          "minLength": 10
         },
-        "zip": {
-          "description": "six digit zip code",
-          "type": "number"
+        "cvv": {
+          "type": "string",
+          "pattern": "^[0-9]{3}$"
         }
       },
-      "additionalProperties": false,
-      "required": [
-        "city",
-        "zip"
-      ]
+      "required": ["billing_address", "cvv"]
+    },
+    "employmentStatus": {
+      "if": {
+        "properties": {
+          "employmentStatus": {
+            "enum": ["employed", "self-employed"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "employer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "jobTitle": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["employer", "jobTitle"]
+      }
     }
   }
 }
