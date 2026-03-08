@@ -350,7 +350,18 @@ const keywordHandlerMap: KeywordHandlerMap = {
         }
         return { key: "patternProperties", data: { value: getArrayFromNumber(value.length) } }
     },
-    // "https://json-schema.org/keyword/dependentSchemas": createBasicKeywordHandler("dependentSchemas"),
+    "https://json-schema.org/keyword/dependentSchemas": (ast, keywordValue, nodes, edges, parentId, nodeDepth, renderedNodes) => {
+        const value = keywordValue as [string, string][];
+        const dependentPropertyNames = [];
+        for (const item of value) {
+            const propertyName = item[0];
+            const schemaUri = item[1];
+            const childId = `dependentSchemas-${propertyName}`;
+            dependentPropertyNames.push(childId);
+            processAST({ ast, schemaUri: schemaUri, nodes, edges, parentId, renderedNodes, childId: childId, nodeTitle: `dependentSchemas["${propertyName}"]`, nodeDepth });
+        }
+        return { key: "dependentSchemas", data: { value: dependentPropertyNames } }
+    },
     "https://json-schema.org/keyword/contains": (ast, keywordValue, nodes, edges, parentId, nodeDepth, renderedNodes) => {
         const value = keywordValue as { contains: string; minContains: number; maxContains: number };
         processAST({ ast, schemaUri: value.contains, nodes, edges, parentId, childId: "contains", renderedNodes, nodeTitle: "contains", nodeDepth });
