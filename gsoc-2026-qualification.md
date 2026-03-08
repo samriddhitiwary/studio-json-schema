@@ -5,7 +5,7 @@ This document contains the deliverables for the initial qualification tasks for 
 ## Part 1: `dependentSchemas` Keyword Handler
 
 ### Implementation Logic
-The handler for the `dependentSchemas` keyword has been implemented in `processAST.ts`. Let's break down the logic of the implementation to explain how it integrates with the Hyperjump JSON Schema internal compilation and ReactFlow node/edge generation.
+The handler for the `dependentSchemas` keyword has been implemented in `processAST.ts`. 
 
 ```typescript
 "https://json-schema.org/keyword/dependentSchemas": (ast, keywordValue, nodes, edges, parentId, nodeDepth, renderedNodes) => {
@@ -36,49 +36,41 @@ The handler for the `dependentSchemas` keyword has been implemented in `processA
 }
 ```
 
-#### Detailed Breakdown:
-1. **Type Assertion of Compiled AST (`keywordValue as [string, string][]`)**: 
-   When Hyperjump compiles a JSON schema, it parses object properties into iterable mappings. For `dependentSchemas`, instead of remaining a raw `Record` or Object mapping property names to schema objects, it arrives in the handler compiled as an array of tuples (e.g., `[[propertyName, schemaURI], ...]`). Correctly understanding this data structure assertion is the first vital step.
-   
-2. **Iteration over Dependencies:** 
-   The handler loops through each item in this tuple array, extracting the `propertyName` (which is the property that triggers the dependent schema requirement) and the `schemaUri` (the reference pointer to the compiled definition of that dependent schema).
-   
-3. **Node and Handle Relationship Generation (`childId`)**: 
-   To ensure ReactFlow can connect the corresponding source node handle to the correct target node without duplication or cross-linking errors, we generate a unique `childId` string (`dependentSchemas-${propertyName}`). This maps the graph dependency back to the explicit property triggering it.
-   
-4. **Recursive AST Processing (`processAST`)**: 
-   For each dependent schema, we recursively invoke `processAST`. This function is responsible for the actual graph data mutation:
-   - Generating graph **nodes** for the dependent schema definitions based on the `schemaUri`.
-   - Creating the connecting **edges**, correctly tying the `parentId` to the newly referenced schema node.
-   - Assigning a clear human-readable UI label via `nodeTitle: dependentSchemas["${propertyName}"]`.
-   
-5. **Return Metadata for Graph Reactivity:** 
-   Finally, we return an object containing the keyword identifier (`"dependentSchemas"`) and the data slice holding the registered `childId` values (`dependentPropertyNames`). This returned data guarantees that the parent ReactFlow node can render the correct corresponding outward handles matching the listed dependencies.
+### Why I Chose This Approach
+1. **Handling Hyperjump's Compiled AST Structure**: Internally, Hyperjump compiles object schemas into iterable structures. The `dependentSchemas` object arrives as an array of tuples (`[propertyName, schemaUri][]`). I explicitly cast `keywordValue` to this type to seamlessly iterate over the dependencies without additional parsing overhead.
+2. **Handle Collision Prevention (`childId`)**: By prefixing the `childId` as `dependentSchemas-${propertyName}`, we prevent handle and edge collisions in ReactFlow. A JSON schema might have a `properties` definition and a `dependentSchemas` definition sharing the exact same property name. Giving it a unique ID ensures the visual graph separates the regular property relationship from the dependency relationship.
+3. **Delegating to `processAST`**: Rather than manually crafting nodes and edges for the dependent schemas, I leveraged the recursive nature of `processAST`. Passing the specific `schemaUri` and the new `childId` ensures the sub-schema nodes are identically processed, properly formatted, and automatically linked to the parent node.
+4. **Returning Metadata for Handles**: Returning the collected `dependentPropertyNames` array communicates back to the parent node mapping that it needs to render custom outward handles for these dependencies.
 
 ---
 
 ## Part 2: Topologically Sorted Rendering of `$defs`
 
-### Approach
-In complex schemas, `$defs` heavily reference each other, creating tangled dependency chains. When generating graph data purely based on the sequential order keys appear in the JSON document, node processing occurs haphazardly. My approach to implementing topologically sorted rendering involves calculating the correct traversal flow prior to mapping nodes.
+### Approach Overview
+To implement topologically sorted rendering of `$defs`, the logic should be centralized directly inside the `$defs` keyword handler in `processAST.ts`. 
 
-#### 1. Dependency Graph Extraction
-Before mapping the properties to graph nodes, performing a pre-traversal of all `$defs` is necessary. We should scan the schema properties for references (`$ref` and `$dynamicRef`) pointing to other local `$defs` URIs. This results in building an abstract directed graph reflecting these relationships (e.g., `Definition A -> depends on -> Definition B`).
+Currently, the `$defs` handler simply loops through the array of definitions sequentially as they appear:
 
-#### 2. Topological Sorting (Kahn's Algorithm / DFS)
-Apply a topological sorting algorithm (like Kahn's Algorithm or depth-first search (DFS)) over the mapped dependency graph. 
-- Schema nodes with an in-degree of 0 (they don't reference other custom definitions, only native types) are ranked to be processed first.
-- As these are removed from the abstract graph, we update the degrees of remaining references until we've parsed an ordered, dependency-safe array.
+```typescript
+"https://json-schema.org/keyword/$defs": (ast, keywordValue, nodes, edges, parentId, nodeDepth, renderedNodes) => {
+    const value = keywordValue as string[];
+    // CURRENT: Sequential processing based on JSON order
+    for (const [index, item] of value.entries()) {
+        processAST({ ast, schemaUri: item, ... });
+    }
+    // ...
+}
+```
 
-#### 3. Resolving Circular Dependencies
-JSON Schema strictly allows circular definitions (e.g., recursive data structures like trees or linked lists). A standard topological sort throws errors during cycles. We need to implement cycle detection tracking the visited recursion stack. When a back-edge creating an endless cycle is discovered, we temporarily isolate it from the dependency graph logic. We mark these edges as "recursive instances", which the graph engine can subsequently style uniquely (e.g., utilizing an alternate dotted-line style to denote recursion, preventing visual clutter).
+My approach is to dynamically sort the `value` array of definition URIs based on `$ref` dependencies *before* executing the `processAST` loop.
 
-#### 4. Ordered Rendering Pass
-Instead of indiscriminately looping through the `ast` keys, the engine iterates through our pre-computed topologically sorted array of URIs, reliably triggering `processAST` to generate nodes precisely based on dependency-weight.
+1. **Pre-scan the AST for `$ref`s**: Before calling `processAST`, loop through each URI in the `value` array and inspect its parsed AST node (`ast[schemaUri]`). We look specifically for the `"https://json-schema.org/keyword/ref"` keyword to determine if it references another definition within the same `$defs` group.
+2. **Dependency Resolution**: Based on these references, we reorder the `value` array. For example, if Definition A contains a `$ref` pointing to Definition B, Definition B is pushed to be evaluated before Definition A in the array. Any definitions without references (leaf nodes) take priority.
+3. **Sequential `processAST` Call**: Finally, loop over this newly ordered array. The rest of the `processAST` logic remains completely unchanged.
 
-### WHY this approach?
-I opted for this specific model due to its vast benefits for both the rendering engine and graph aesthetic readability:
+### Why I Chose This Approach
 
-- **Guaranteeing Layout Accuracy & Pre-Calculation**: Visualization auto-layout algorithms (e.g., Dagre.js standardly paired with ReactFlow) behave erratically if node dependencies are populated out-of-order. Computing dependency flow before creating ReactFlow states guarantees that when a node renders, constraints for the children it references have already been accurately measured and established.
-- **Edge Crossing Reduction**: By ensuring roots are evaluated prior to leaves, auto-layout ranks nodes into precise tiered layers, drastically mitigating overlapping edges or confusing crossed spaghetti-wires in major schemas (a highly requested element in the GSoC outcomes).
-- **Graceful Handling of Recursive Code**: Explicitly extracting connection maps before rendering ensures infinite recursive loops crash neither the compiler nor the DOM, all while letting the user visibly explore cyclical nature via distinct styling patterns.
+1. **Works with existing architecture**: The AST already contains all resolved references, so we can analyze dependencies without additional schema parsing.
+2. **Minimal disruption**: Reordering happens in the `$defs` handler before the rendering loop - no changes needed to core rendering logic.
+3. **Leveraging the `renderedNodes` Map**: In `processAST`, as nodes are parsed, they are stored in the `renderedNodes` Map. If Definition A depends on Definition B, processing Definition B *first* guarantees that it already exists in `renderedNodes`. When Definition A is finally processed and tries to reference it, `processAST` instantly finds the cached node, correctly calculating handles and edges without duplicating rendering work.
+4. **Cleaner Graph Layouting**: Auto-layout algorithms evaluate dimensions sequentially. By ensuring fundamental dependencies are generated and calculated in `renderedNodes` first, the layout engine can position elements into structured tiers (roots before leaves). This prevents overlapping edges and erratic layout dimensions which happen when parent nodes try to connect to child nodes that haven't been fully formulated yet.
